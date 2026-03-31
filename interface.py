@@ -1,9 +1,15 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, scrolledtext
 from database import Database
 
 
 class InterfaceOuvidoria:
+
+    TAGS_POR_TIPO = {
+        "Elogio": "elogio",
+        "Crítica": "critica",
+        "Comentário": "comentario",
+    }
     
     def __init__(self, root):
         self.root = root
@@ -259,84 +265,56 @@ class InterfaceOuvidoria:
         descricao = self.text_descricao.get("1.0", tk.END).strip()
         
         if not descricao:
-            messagebox.showwarning("Aviso", "Por favor, preencha a descrição!")
             return
         
         try:
-            manifestacao = self.db.criar(tipo, descricao)
-            messagebox.showinfo(
-                "Sucesso",
-                f"Manifestação #{manifestacao.codigo} criada com sucesso!"
-            )
-            
+            self.db.criar(tipo, descricao)
             self.text_descricao.delete("1.0", tk.END)
             self.combo_tipo.current(0)
             self._atualizar_lista()
             
-        except ValueError as e:
-            messagebox.showerror("Erro", str(e))
+        except ValueError:
+            return
     
     def _buscar(self):
         palavra_chave = self.entry_busca.get().strip()
         
         if not palavra_chave:
-            messagebox.showwarning("Aviso", "Digite uma palavra-chave para buscar!")
             return
         
         resultados = self.db.buscar_por_descricao(palavra_chave)
-        
-        self.listbox_manifestacoes.config(state=tk.NORMAL)
-        self.listbox_manifestacoes.delete("1.0", tk.END)
-        
-        if resultados:
-            for manifestacao in resultados:
-                texto = f"[{manifestacao.codigo}] {manifestacao.tipo}: {manifestacao.descricao[:50]}"
-                if len(manifestacao.descricao) > 50:
-                    texto += "...\n"
-                else:
-                    texto += "\n"
-                
-                tag = self._get_tag_por_tipo(manifestacao.tipo)
-                self.listbox_manifestacoes.insert(tk.END, texto, tag)
-        else:
-            self.listbox_manifestacoes.insert(tk.END, "Nenhum resultado encontrado")
-        
-        self.listbox_manifestacoes.config(state=tk.DISABLED)
-        self._atualizar_stats()
+        self._renderizar_manifestacoes(resultados, "Nenhum resultado encontrado")
     
     def _limpar_busca(self):
         self.entry_busca.delete(0, tk.END)
         self._atualizar_lista()
     
     def _atualizar_lista(self):
+        manifestacoes = self.db.listar_todas()
+        self._renderizar_manifestacoes(manifestacoes, "Nenhuma manifestação registrada")
+
+    def _renderizar_manifestacoes(self, manifestacoes, mensagem_vazia):
         self.listbox_manifestacoes.config(state=tk.NORMAL)
         self.listbox_manifestacoes.delete("1.0", tk.END)
-        
-        manifestacoes = self.db.listar_todas()
-        
-        if manifestacoes:
+
+        if not manifestacoes:
+            self.listbox_manifestacoes.insert(tk.END, mensagem_vazia)
+        else:
             for manifestacao in manifestacoes:
-                texto = f"[{manifestacao.codigo}] {manifestacao.tipo}: {manifestacao.descricao[:50]}"
-                if len(manifestacao.descricao) > 50:
-                    texto += "...\n"
-                else:
-                    texto += "\n"
-                
+                texto = self._formatar_manifestacao(manifestacao)
                 tag = self._get_tag_por_tipo(manifestacao.tipo)
                 self.listbox_manifestacoes.insert(tk.END, texto, tag)
-        else:
-            self.listbox_manifestacoes.insert(tk.END, "Nenhuma manifestação registrada")
-        
+
         self.listbox_manifestacoes.config(state=tk.DISABLED)
         self._atualizar_stats()
+
+    def _formatar_manifestacao(self, manifestacao):
+        descricao = manifestacao.descricao[:50]
+        sufixo = "...\n" if len(manifestacao.descricao) > 50 else "\n"
+        return f"[{manifestacao.codigo}] {manifestacao.tipo}: {descricao}{sufixo}"
     
     def _get_tag_por_tipo(self, tipo):
-        if tipo == "Elogio":
-            return "elogio"
-        elif tipo == "Crítica":
-            return "critica"
-        else:
-            return "comentario"
+        return self.TAGS_POR_TIPO.get(tipo, "comentario")
     
     def _atualizar_stats(self):
         total = self.db.total_manifestacoes()
@@ -359,28 +337,21 @@ class InterfaceOuvidoria:
             sel_inicio = self.listbox_manifestacoes.index(tk.SEL_FIRST)
             sel_fim = self.listbox_manifestacoes.index(tk.SEL_LAST)
         except tk.TclError:
-            messagebox.showwarning("Aviso", "Selecione uma manifestação para remover!")
             return
         
         linha_selecionada = self.listbox_manifestacoes.get(sel_inicio, sel_fim)
         
         if "Nenhuma" in linha_selecionada or "Nenhum" in linha_selecionada:
-            messagebox.showwarning("Aviso", "Selecione uma manifestação válida!")
             return
         
         try:
             codigo = int(linha_selecionada.split("[")[1].split("]")[0])
         except (IndexError, ValueError):
-            messagebox.showerror("Erro", "Não foi possível identificar o código!")
             return
-        
-        if messagebox.askyesno("Confirmar", f"Remover manifestação #{codigo}?"):
-            if self.db.remover(codigo):
-                messagebox.showinfo("Sucesso", "Manifestação removida com sucesso!")
-                self._atualizar_lista()
-                self._limpar_busca()
-            else:
-                messagebox.showerror("Erro", "Não foi possível remover a manifestação!")
+
+        if self.db.remover(codigo):
+            self._atualizar_lista()
+            self._limpar_busca()
 
 
 def iniciar_interface():
